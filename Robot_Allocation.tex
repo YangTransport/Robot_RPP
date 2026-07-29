@@ -17,6 +17,8 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsthm}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
 %\usepackage{times}
 \usepackage{multirow}
 \usepackage{footnote}
@@ -148,7 +150,7 @@ Research Record\end{center}}
 \begin{document}
 \pagewiselinenumbers
 \baselineskip=15pt %This means double space
-\title{On the Allocation of Humannoid Robots in a Ride-Parcel-Pooling Service with Robot Taxis }
+\title{On the Allocation of Humanoid Robots in a Ride-Parcel-Pooling System with Robot Taxis }
 %OLD: \author{Yang Liu, Yu (Marco) Nie\footnote{Corresponding author} and Jonathan Hall\\Department of Civil and Environmental Engineering\\Northwestern University, 2145 Sheridan Road, Evanston, IL 60208\\Email: y-nie@northwestern.edu\\Phone: 1-847-467-0502}
 
 %ADDED: Goal was just to have my affiliation listed, this was the best way I could figure out how to do so without adding a package
@@ -192,494 +194,685 @@ As shown in Fig. \ref{fig:robot_rpp}, the proposed task-allocation system integr
 %   \item \textbf{Parcel Transportation}: Humanoid robots can can assist with parcel delivery and pickup.
 % \end{itemize}
 
-\section{Humanoid Robot Allocation Model}
+\section{Model Settings}
 
-\subsection{Robot Tasks and Information Structure}
+\noindent This section introduces the interconnected system of the RPP platform, public transport system, and the third-party robot company. Section~\ref{subsec:rpp_preliminaries} summarizes the
+RPP system and specifies its operational interface with the third-party robot
+company. Section~\ref{subsec:task_information} then defines the unified robot-task representation, and describes
+the three task categories considered in this study.
 
-We consider a robot company that operates a set \(K\) of
-humanoid robots and provides Robot-as-a-Service to ride-hailing and public transport
-clients. Let \(N\) denote the set of task nodes, \(V\) the set of linked
-ride-hailing vehicles,
-and \(I_t\) the set of robot tasks that are available at decision time
-point \(t\). Robot movement between nodes \(m,n\in N\) is represented by the
-travel time \(\tau_{mn}\) for any \(m,n\in N\).
+\subsection{Preliminaries}
+\label{subsec:rpp_preliminaries}
 
-Each task \(i\in I_t\)  is represented by
+The ride-parcel-pooling (RPP) system studied by \citet{FehnEtAl2023}
+integrates parcel delivery into an on-demand ride-pooling fleet, allowing the
+same vehicles to transport both passengers and parcels. Passenger requests are
+revealed dynamically and handled through an immediate
+insertion heuristic that assigns each feasible request to a vehicle. Each passenger-request insertion updates a vehicle schedule and marks the
+corresponding vehicle as having a changed route. Such changes will trigger the assignment of parcel requests to the updated vehicle schedule at the next RPP optimization time point, which is based on the pending parcel pool and these changed vehicle schedules. This
+study uses the combined delivery and pick-up assignment (CDPA) strategy, under which the parcel
+pick-up and drop-off stops are inserted jointly into the schedule of the same
+vehicle. The resulting vehicle schedules remain subject to vehicle capacity,
+passenger waiting-time and detour constraints, and route feasibility (see
+\citet{FehnEtAl2023} for details).
+
+
+
+\begin{figure}[htbp]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[
+  font=\sffamily,
+  module/.style={
+    rectangle,
+    rounded corners=2pt,
+    draw=black!55,
+    line width=0.75pt,
+    minimum width=3.75cm,
+    minimum height=1.10cm,
+    text width=3.35cm,
+    align=center,
+    fill=white,
+    inner sep=5pt,
+    font=\footnotesize
+  },
+  source/.style={
+    module,
+    minimum width=2.25cm,
+    text width=1.85cm
+  },
+  compact/.style={
+    module,
+    minimum width=3.25cm,
+    text width=2.85cm
+  },
+  flow/.style={
+    -{Latex[length=2.2mm]},
+    line width=0.9pt,
+    draw=black!70
+  },
+  feedback/.style={
+    -{Latex[length=2.0mm]},
+    line width=0.8pt,
+    dashed,
+    draw=black!55
+  },
+  lab/.style={
+    font=\tiny,
+    align=center,
+    fill=white,
+    inner sep=1.2pt,
+    text width=2.30cm
+  },
+  shortlab/.style={
+    lab,
+    text width=1.75cm
+  },
+  group/.style={
+    rounded corners=5pt,
+    line width=0.8pt,
+    inner xsep=9pt,
+    inner ysep=10pt
+  }
+]
+
+\definecolor{rppblue}{RGB}{47,103,180}
+\definecolor{robotgreen}{RGB}{45,145,88}
+\definecolor{ptorange}{RGB}{220,132,36}
+
+% RPP-system modules
+\node[module, draw=rppblue, fill=rppblue!7] (passenger) at (-6.75,0)
+  {Real-time\\ passenger demand};
+\node[module, draw=rppblue, fill=rppblue!7] (passengermatch) at (-6.75,-1.65)
+  {Vehicle--passenger matching};
+\node[source, draw=rppblue, fill=rppblue!7] (parcelmatch) at (-2.8,-1.65)
+  {Current robotaxi\\fleet state};
+\node[source, draw=rppblue, fill=rppblue!7] (parcel) at (-6.75,-5.05)
+  {Parcel OD pool};
+\node[module, draw=rppblue, fill=rppblue!7] (vehicleplan) at (-6.75,-3.55)
+  {Parcel--vehicle\\matching};
+
+% Third-party robot-company modules
+\node[compact, draw=robotgreen, fill=robotgreen!7] (initialfleet) at (4.15,0)
+  {Current robot fleet state};
+\node[compact, draw=robotgreen, fill=robotgreen!7] (taskstate) at (4.15,-5.05)
+  {Robot assignment \\algorithm};
+\node[source, draw=robotgreen, fill=robotgreen!7] (realtimetasks) at (0.5,-1.65)
+  {Real-time task\\requests};
+\node[source, draw=robotgreen, fill=robotgreen!7] (potentialtasks) at (0.5,-5.05)
+  {Potential task\\requests};
+\node[source, draw=robotgreen, fill=robotgreen!7] (fixedtasks) at (0.5,-7.70)
+  {Fixed task\\requests};
+\node[compact, draw=robotgreen, fill=robotgreen!7] (execution) at (4.15,-7.7)
+  {Robot dispatch\\and task execution};
+
+% Public-transport modules
+\node[module, draw=ptorange, fill=ptorange!8] (contract) at (-6.25,-7.70)
+  {Station-service\\contracts};
+
+% System boundaries
+\begin{scope}[on background layer]
+\node[group, draw=rppblue!45, fill=rppblue!3,
+  fit=(passenger)(passengermatch)(parcel)(vehicleplan)(parcelmatch)] (rppGroup) {};
+\node[group, draw=robotgreen!45, fill=robotgreen!3,
+  fit=(initialfleet)(taskstate)(realtimetasks)(potentialtasks)(fixedtasks)
+      (execution)] (robotGroup) {};
+\node[group, draw=ptorange!50, fill=ptorange!4,
+  fit=(contract)] (ptGroup) {};
+\end{scope}
+
+% Internal information and decision flows
+\draw[flow] (passenger) --
+  node[midway, right, font=\tiny, align=left, inner sep=3pt]
+  {}
+  (passengermatch);
+\draw[flow] ($(passengermatch.east)+(0,0.18)$) -- ($(parcelmatch.west)+(0,0.18)$);
+\draw[flow] ($(parcelmatch.west)+(0,-0.18)$) -- ($(passengermatch.east)+(0,-0.18)$);
+\draw[flow] (passengermatch.south) -- node[midway, right, shortlab, fill=none] {trigger} (vehicleplan.north);
+\draw[flow] (parcel.north) -- (vehicleplan.south);
+\draw[flow] ($(vehicleplan.east)+(0,-0.15)$) -| ($(parcelmatch.south)+(0.15,0)$);
+\draw[flow] ($(parcelmatch.south)+(-0.15,0)$) |- ($(vehicleplan.east)+(0,0.15)$);
+\draw[flow] (initialfleet) -- (taskstate.north);
+\draw[flow] (realtimetasks.east) -- ++(0.5,0) |- (taskstate.west);
+\draw[flow] (parcel.east) -- (potentialtasks.west);
+\draw[flow] (potentialtasks.east) -- (taskstate.west);
+\draw[flow] (fixedtasks.east) -- ++(0.5,0) |- (taskstate.west);
+\draw[flow] (taskstate) -- (execution);
+\draw[flow] (execution.east) -- ++(0.2,0) |- (initialfleet.east);
+
+% RPP--robot-company information exchange
+\draw[flow] (parcelmatch.east) -- (realtimetasks.west);
+\draw[flow] (initialfleet.west) -| (parcelmatch.north);
+
+% Public-transport--robot-company information exchange
+\draw[flow] (contract.east) -- (fixedtasks.west);
+
+% Station service execution and reporting
+
+% System labels
+\node[anchor=south west, font=\bfseries\scriptsize, text=rppblue]
+  at ($(rppGroup.north west)+(0.05,0.05)$) {RPP System};
+\node[anchor=south west, font=\bfseries\scriptsize, text=robotgreen]
+  at ($(robotGroup.north west)+(0.05,0.05)$) {Third-Party Robot Company};
+\node[anchor=south west, font=\bfseries\scriptsize, text=ptorange]
+  at ($(ptGroup.north west)+(0.05,0.05)$) {Public Transport Operator};
+
+\end{tikzpicture}%
+}
+\caption{Module-level flow among the third-party robot company, the RPP system, and the public transport operator.}
+\label{fig:business_relation}
+\end{figure}
+
+We envsion a variant of this RPP framework by considering that the RPP operator is adopting autonomous vehicles (AVs) and is interested in outsourcing non-driving tasks to a third-party robot company.  Removing the driver
+eliminates the natural on-site agent who would otherwise handle non-driving
+tasks such as passenger boarding assistance, first-and-last-meter parcel
+handover, as well as other services outside of the RPP system, e.g., the  station guidance services in public transport system. We assign these responsibilities to humanoid
+robots provided by an independent third-party company operating on a
+Robot-as-a-Service basis for both the RPP operator and public transport
+station operators. See Fig.~\ref{fig:business_relation} for a schematic of the work flow.
+
+
+% When the RPP controller confirms a passenger assignment
+% requiring assistance or schedules a parcel handover, it issues a
+% robot-service request specifying the task category, access location, desired
+% meeting time, expected service duration, and contractual payment terms. The
+% robot company either accepts or defers each request and, upon assignment,
+% communicates the designated robot and its expected readiness time. Meanwhile, public
+% transport station operators submit their service-block
+% requirements independently at the beginning of the day. In all cases, RPP
+% vehicle scheduling is treated as an upstream decision, and the robot company
+% responds to the resulting service requests without jointly optimizing the
+% two fleets.
+
+\subsection{Robot Tasks}
+\label{subsec:task_information}
+
+Next, we introduce a unified representation of robot tasks that captures the operational requirements of passenger-assistance, parcel-chain, and station-operation services. Let \(N\)
+denote the set of access nodes, where each node represents a passenger pick-up or drop-off location, a parcel handover point from vehicle to robot, or a public transport station. The urban area is partitioned into disjoint local service areas, each
+associated with one node \(n\in N\). Humanoid robots can travel between nodes by robotaxi or public
+transport, with \(\tau_{mn}\) denoting the travel time from node \(m\) to node
+\(n\). All node-to-node travel times are fixed and known.
+
+
+Exact door-level parcel origins and destinations are abstracted by their access
+nodes. The RPP system hands each parcel over to a robot at an access node, and
+the robot may walk between that node and the exact service location. The time
+required for this local movement is included in the fixed task duration rather
+than represented through an explicit pedestrian network.
+
+
+All services offered by the third-party robot company are expressed through a
+common six-attribute task representation. The company operates a set \(K\) of
+humanoid robots and provides Robot-as-a-Service to ride-hailing and public
+transport clients. At decision time \(t\), it observes the set \(I_t\) of tasks
+currently available for assignment. Each task \(i\in I_t\) is represented by
 \[
 i=
 \left(
-q_i,n_i,r_i,d_i,s_i,R_i
+q_i,n_i,t_i^*,s_i,\gamma_i,R_i
 \right).
 \]
-Here, \(q_i\) is the task category, \(n_i\in N\) is the single node at which
-the task is performed, \(r_i\) and \(d_i\) are its release and due times,
-\(s_i\) is its duration, and \(R_i\) is its revenue. No within-task inter-node
-movement is modeled. An operation involving multiple nodes is decomposed into
-linked single-node tasks, and robot movement between consecutive tasks is
-represented by \(\tau_{mn}\).
+Here, \(q_i\) is the task category, \(n_i\in N\) the service node,
+\(t_i^*\) the desired meeting time, \(s_i\) the fixed and known task duration,
+\(\gamma_i\) the penalty per unit of meeting-time delay, and \(R_i\) the task
+revenue.
 
-We consider three task categories, so that
+The task set comprises three categories distinguished by their operational
+roles:
 \[
 q_i\in\{\mathrm{A},\mathrm{C},\mathrm{S}\},
 \]
 where \(\mathrm{A}\), \(\mathrm{C}\), and \(\mathrm{S}\) denote
 passenger-assistance, parcel-chain, and station-operation tasks, respectively.
+Each category is described below.
 
-Category-specific information is defined separately instead of being grouped
-in a general requirement vector. Let \(I_t^{\mathrm V}\subseteq I_t\) denote
-the set of tasks requiring synchronization with a ride-hailing vehicle. For
-each \(i\in I_t^{\mathrm V}\), \(v_i\in V\) is the linked vehicle and \(e_i\)
-is its expected arrival time at \(n_i\). Let
-\(I_t^{\mathrm C}=\{i\in I_t:q_i=\mathrm C\}\). For each parcel-chain task
-\(i\in I_t^{\mathrm C}\), \(p_i\) is the parcel identifier and
-\(\mathcal P_i\) is the set of predecessor tasks that must be completed before
-task \(i\) can start. Station-operation tasks require no additional attribute:
-their fixed contractual interval is specified directly by \(r_i\) and \(d_i\).
-The three categories are described below.
+\subsubsection{Passenger-assistance task \((q_i=\mathrm{A})\)}
+Passenger-assistance tasks are real-time services synchronized with robotaxi
+arrivals at pick-up or drop-off nodes. Assistance at the pick-up and drop-off
+nodes is represented by separate tasks. Each task is released after the
+ride-hailing request is confirmed and the corresponding node and scheduled
+vehicle arrival time become observable. The desired meeting time \(t_i^*\) is
+the robotaxi's scheduled arrival time indicated by the RPP system. If the
+assigned robot is not ready at node \(n_i\) by \(t_i^*\), the robot company
+incurs a delay penalty at rate \(\gamma_i\).
 
-\noindent\textbf{Passenger-assistance task
-\((q_i=\mathrm{A})\).}
-A passenger-assistance task supports passenger boarding or alighting at a
-ride-hailing pick-up or drop-off node. It is generated in real time after the
-ride-hailing request is confirmed and the assigned vehicle, task node, and
-expected vehicle arrival time become observable. The task is performed at
-node \(n_i\), and its linked vehicle \(v_i\) and expected arrival time \(e_i\)
-define the synchronization requirement. The assigned robot travels to the node
-and must be ready in coordination with the vehicle.
-
-\noindent\textbf{Parcel-chain task
-\((q_i=\mathrm{C})\).}
-The  origins and destinations of parcel delivery requests are known
-at the beginning of the day, but their executable robot tasks are
-activated only after the RPP system specifies the relevant task nodes and
-expected handover times. Each pickup, handover, or delivery operation is
-represented as a separate single-node task. Tasks belonging to the same parcel
-share the identifier \(p_i\) and are ordered by their predecessor sets
-\(\mathcal P_i\). A parcel task that involves vehicle handover also belongs to
-\(I_t^{\mathrm V}\) and therefore has linked-vehicle data \((v_i,e_i)\). The
-tasks may be assigned to different robots but retain the common category
-\(q_i=\mathrm{C}\). Robot movement between their nodes is represented by
-\(\tau_{mn}\). The set \(P_t\) contains known parcel requests that have not
-yet been activated by an RPP matching result.
+The fixed duration \(s_i\) of a passenger-assistance task covers both direct
+boarding or alighting assistance and any required local escort.
 
 
+\subsubsection{Parcel-chain task
+\((q_i=\mathrm{C})\)}
+Each parcel request generates two parcel-chain tasks that synchronize robot
+service with vehicle handovers at the parcel origin and destination. Parcel
+origins and destinations are known by the RPP system at the beginning of the
+day and shared with the robot company. Once a parcel is assigned to a vehicle,
+the RPP system communicates the scheduled handover times, activating one
+pick-up task at the origin node and one drop-off task at the destination node.
+For each task, \(t_i^*\) is the communicated handover time. In the present
+setting, parcel tasks carry no lateness compensation, so \(\gamma_i=0\);
+travel and handover times nevertheless affect whether the robot can complete
+other revenue-generating tasks.
 
-\noindent\textbf{Station-operation task
-\((q_i=\mathrm{S})\).}
-A station-operation task is a long-duration task block at a fixed public
-transport station for passenger guidance, flow management, or congestion
-mitigation. Its station node, contractual start and end times, and required
-number of robots are known at the beginning of the day. Each required robot is
-represented by one atomic task, and once the task is assigned, its
-task interval is locked in the robot schedule as a hard commitment.
+The fixed duration \(s_i\) of a parcel-chain task captures the local movement
+between the RPP access node and the parcel door.
+
+
+\subsubsection{Station-operation task
+\((q_i=\mathrm{S})\)}
+Station-operation tasks are preannounced service blocks that may be deferred
+subject to a start-time delay penalty. They provide passenger guidance, flow
+management, or congestion mitigation at fixed public transport stations. The
+station node, desired start time, duration, and required number of robots are
+known at the beginning of the day. Each required robot is represented by one
+atomic task. The desired start time is \(t_i^*\), the fixed service duration is
+\(s_i\), and a start at \(a_i>t_i^*\) incurs the penalty
+\(\gamma_i[a_i-t_i^*]^+\), as for the other task categories. Once assigned,
+the task remains in the selected robot schedule, but its planned start time
+\(a_i\) may shift when later insertions update that schedule. The corresponding
+lateness penalty is recomputed from the updated start time.
 
 \begin{table}[htbp]
 \centering
-\caption{Illustrative task data for three categories (Munich city-center example).}
+\caption{Illustrative task data under the unified representation (Munich example).}
 \label{tab:task_tuple_examples}
-\resizebox{\textwidth}{!}{%
-\begin{tabular}{l l l l l l l}
+\begin{tabular}{l l l l l l}
 \hline
-$q_i$ & $n_i$ & $r_i$ & $d_i$ & $s_i$ & $R_i$ & Category-specific data \\
+$q_i$ & $n_i$ & $t_i^*$ & $s_i$ & $\gamma_i$ & $R_i$ \\
 \hline
-$\mathrm{A}$ & Marienplatz & 08:12 & 08:20 & 5 min & 14 & $v_i=v_{231}$; $e_i=08{:}15$ \\
-$\mathrm{C}$ & Munich Hbf & 09:05 & 09:35 & 12 min & 18 & $p_i=p_{77}$; $\mathcal P_i=\{j\}$; $v_i=v_{118}$; $e_i=09{:}20$ \\
-$\mathrm{S}$ & Karlsplatz (Stachus) & 07:00 & 10:00 & 180 min & 95 & fixed contract interval $[r_i,d_i]$ \\
+$\mathrm{A}$ (Passenger assistance) & Marienplatz & 08:15 & 5 min & 3 Euro/min & 14 \\
+$\mathrm{C}$ (Parcel chain) & Munich Hbf & 09:20 & 12 min & 0 Euro/min & 18 \\
+$\mathrm{S}$ (Station operation) & Karlsplatz & 07:00 & 180 min & 0.8 Euro/min & 95 \\
 \hline
 \end{tabular}%
-}
 \end{table}
 
-\subsection{Markov Decision Process Formulation}
 
-The allocation problem is formulated over a finite operating day with
-decision time points \(t\in\mathcal T\). A decision time point is triggered by
-the beginning of the day, the arrival of a new passenger-assistance task,
-an RPP matching result, the completion of a robot task, or a material
-update of a linked vehicle's expected arrival time.
+During operation, the robot
+company collects real-time information on
+new passenger-assistance tasks and parcel-matching outcomes.
 
-\subsubsection{State}
 
-The system state is
-\[
-S_t=
-\left(
-t,\boldsymbol{\ell}_t,\boldsymbol{b}_t,
-\boldsymbol{\pi}_t,I_t,P_t,E_t,B
-\right).
-\]
-Here, \(\ell_{kt}\) and \(b_{kt}\) denote the current node and earliest
-available time of robot \(k\), respectively;
-\(\boldsymbol{\pi}_t=(\pi_{kt})_{k\in K}\) is the collection of current robot
-schedules; \(I_t\) is the active task set; \(P_t\) is the set of known but
-not-yet-activated parcel requests; \(E_t\) contains the currently observed RPP
-vehicle assignments and arrival-time information; and \(B\) is the set of
-station-operation commitments known at the beginning of the day. Although
-\(I_t\) is a component of \(S_t\), it is written separately below when useful
-to emphasize the tasks considered by the online assignment decision.
 
-\subsubsection{Action and Feasibility}
+\section{Robot allocation problem}
+\label{sec:mdp_formulation}
+In this section, we first formulate the robot allocation problem as a Markov
+decision process (MDP) in Section~\ref{subsec:mdp_formulation}. To solve the MDP, we introduce a profit-oriented rolling-horizon insertion heuristic to approximate the optimal policy in Section~\ref{subsec:heuristic}.
 
-Let \(x_{ik}^t\in\{0,1\}\) indicate whether task \(i\) is assigned to
-robot \(k\) at time point \(t\), and let \(\pi'_{kt}\) denote the updated
-ordered schedule of robot \(k\). An action is
-\[
-\nu_t=
-\left(
-x_t,\boldsymbol{\pi}'_t
-\right).
-\]
-The feasible action set is compactly written as
-\[
-\mathcal U(S_t)=
-\left\{
-\begin{array}{ll}
-(x_t,\boldsymbol{\pi}'_t):&
-\displaystyle \sum_{k\in K}x_{ik}^t\leq 1,
-\quad \forall i\in I_t,\\[2mm]
-&
-x_{ik}^t\in\{0,1\},
-\quad \forall i\in I_t,\ k\in K,\\[1mm]
-&
-\pi'_{kt}\in\Pi_k(S_t),
-\quad \forall k\in K,\\[1mm]
-&
-x_{ik}^t=1\ \Longrightarrow\ i\in\pi'_{kt}
-\end{array}
-\right\}.
-\]
-The set \(\Pi_k(S_t)\) embeds robot availability, task ordering,
-node-to-node travel times, release and due times, task durations, vehicle
-synchronization, parcel-chain precedence, and all previously locked
-commitments. Tasks already
-being executed cannot be reassigned. Station-operation tasks are represented as
-atomic units and must satisfy
-\[
-\sum_{k\in K}x_{ik}^0=1,
-\qquad \forall i\in B,
-\]
-at the beginning of the day; once assigned, their specified task intervals
-remain fixed in the corresponding robot schedules.
 
-The timing of an assigned task is induced by its robot schedule:
+\subsection{Markov Decision Process Formulation}\label{subsec:mdp_formulation}
+The decision model is defined from the information available to the
+third-party robot company over a finite operating day. Decisions are made at
+times \(t\in\mathcal T\). For robot \(k\in K\), let \(\pi_{kt}\) denote its
+schedule of accepted tasks and their planned timing.
+The fleet schedule is
 \[
-a_i=a_i(\pi'_{kt},S_t),
-\qquad
-c_i=c_i(\pi'_{kt},S_t),
-\qquad
-L_i=\left[c_i(\pi'_{kt},S_t)-d_i\right]^+.
-\]
-Thus, \(a_i\), \(c_i\), and \(L_i\) are outcomes rather than input attributes.
-Station-operation and parcel-chain requirements are imposed directly as
-\[
-a_i=r_i,\quad c_i=d_i,
-\qquad \forall i\in B,
-\]
-\[
-a_i\geq c_j,
-\qquad
-\forall i\in I_t^{\mathrm C},\ j\in\mathcal P_i.
-\]
-For a synchronized task, if \(u_i\) is the robot-ready time induced by the
-schedule and \(e_i\) is the linked vehicle arrival time, then
-\[
-a_i=\max\{u_i,e_i\},
-\qquad
-W_i^r=[e_i-u_i]^+,
-\qquad
-W_i^v=[u_i-e_i]^+.
+\boldsymbol{\pi}_t=(\pi_{kt})_{k\in K}.
 \]
 
-\subsubsection{Stochastic Information and State Transition}
-
-Let
+Let \(I_t\) denote the pool of unassigned tasks that have already been communicated to
+the robot company and are currently available for assignment.  Let \(P_t\) denote the parcel requests whose OD information
+is known but which have not yet been converted into time-specific robot tasks
+by an RPP parcel--vehicle match. Because these known requests affect future
+task arrivals, they are retained in the information state
 \[
-\zeta_{t+1}=
-\left(
-A_{t+1},M_{t+1},E_{t+1},\tau_{t+1}
-\right)
+S_t=\left(t,\boldsymbol{\pi}_t,I_t,P_t\right).
 \]
-denote the new information observed before the next decision time point.
-Here, \(A_{t+1}\) contains new passenger-assistance tasks,
-\(M_{t+1}\) contains new RPP matching outcomes for pending parcels,
-\(E_{t+1}\) contains vehicle-arrival updates, and \(\tau_{t+1}\) contains
-updated or realized travel-time information. If \(\Gamma(M_{t+1})\) denotes
-the parcel tasks activated by the new matching outcomes and \(D_t\)
-denotes completed or expired tasks, the active set evolves according to
+
+Each action selects a subset of the currently unassigned tasks, assigns them to
+robots, and updates the corresponding schedules. Let
+\(x_{ik}^t\in\{0,1\}\) equal one if task \(i\) is assigned to robot \(k\) at
+time \(t\), and zero otherwise. Each task $i\in I_t$ can be assigned to at most one robot:
+\(
+\sum_{k\in K}x_{ik}^t\leq 1,
+\).
+A task that is not assigned in the current decision stays in the pool of unassigned tasks.
+
+
+
+For each robot, \(\Pi_k(S_t)\) denotes the set of feasible schedules that respect
+robot availability, fixed travel and service times, task precedence constraints
+(e.g., passenger boarding assistance has to be before alighting assistance),
+and tasks already in service, which cannot be moved. Let
+\(\mathcal U(S_t)\) contain decisions $\nu_t=(x_t,\boldsymbol{\pi}'_t)$
+that satisfy the unique-assignment and precedence conditions above,
+\(\pi'_{kt}\in\Pi_k(S_t)\) for every \(k\).
+
+
+The state evolves as new tasks and operational information become available
+between consecutive decisions. New passenger tasks, parcel-matching outcomes,
+and their communicated meeting times are collected in the exogenous
+information \(\zeta_{t+1}\). Travel times and task durations remain fixed and
+known; stochasticity arises only from future task arrivals and parcel-matching
+outcomes. Let \(F\) denote the transition mapping that
+updates the fleet schedules, the available task set, and the unmatched parcel
+pool. The next state is
 \[
-I_{t+1}
+S_{t+1}=F(S_t,\nu_t,\zeta_{t+1}).
+\]
+
+
+The robot company seeks to maximize its expected cumulative profit. Let
+\(I_t^*\) denote the set of tasks assigned at time \(t\). The one-step profit
+is
+\[
+G(S_t,\nu_t,\zeta_{t+1})
 =
-\left(I_t\setminus D_t\right)
-\cup A_{t+1}
-\cup\Gamma(M_{t+1}).
+\sum_{i\in I_t^{*}}R_i
+-
+\sum_{i\in I_t^{*}}\gamma_iL_i,
 \]
-The full state transition is written as
-\[
-S_{t+1}=F(S_t,\nu_t,\zeta_{t+1}),
-\]
-where \(F(\cdot)\) also updates robot locations, availability, schedules,
-pending parcels, and vehicle information. The state is assumed to contain all
-information required for the transition distribution, so that
-\[
-\Pr(S_{t+1}\mid S_0,\nu_0,\ldots,S_t,\nu_t)
-=
-\Pr(S_{t+1}\mid S_t,\nu_t).
-\]
+where \(a_i\) is the scheduled start time and
+\(L_i=[a_i-t_i^*]^+\) is the deterministic lateness of task \(i\) under the
+updated schedule. Revenue is collected once, when a task is completed, and a lateness payment is
+incurred when a robot starts after the agreed meeting time.
 
-\subsubsection{One-Step Cost}
-
-Let
-\(\widetilde T_t\), \(\widetilde W_t^r\), \(\widetilde W_t^v\),
-\(\widetilde L_t\), \(\widetilde U_t\), and \(\widetilde R_t\) denote the
-normalized robot travel cost, robot waiting cost, vehicle waiting cost,
-lateness cost, unserved-task cost, and collected revenue during the
-transition from \(t\) to \(t+1\), respectively. The one-step cost is
-\[
-C(S_t,\nu_t,\zeta_{t+1})
-=
-\widetilde T_t
-+\widetilde W_t^r
-+\widetilde W_t^v
-+\widetilde L_t
-+\widetilde U_t
--\widetilde R_t.
-\]
-The normalization incorporates the economic values assigned by the robot
-operator; in particular, one minute of vehicle waiting is assigned a larger
-normalized cost than one minute of robot waiting. These normalization
-constants, as well as travel times, task durations, vehicle arrival times, and
-contract values, are model inputs rather than heuristic parameters.
-
-\subsubsection{Bellman Equation}
-
-Let \(V_t(S_t)\) be the minimum expected cost from time point \(t\) to the end
-of the operating day. The exact optimality equation is
+Let \(V_t(S_t)\) denote the maximum expected profit from decision time \(t\) to
+the end of the operating day. The Bellman equation is
 \[
 V_t(S_t)
 =
-\min_{\nu_t\in\mathcal U(S_t)}
+\max_{\nu_t\in\mathcal U(S_t)}
 \mathbb E
 \left[
-C(S_t,\nu_t,\zeta_{t+1})
+G(S_t,\nu_t,\zeta_{t+1})
 +V_{t+1}\!\left(F(S_t,\nu_t,\zeta_{t+1})\right)
 \mid S_t,\nu_t
 \right],
 \]
-with terminal value
+with zero terminal value at the end of the operating duration.
+
+
+The MDP provides a normative representation of the sequential allocation
+problem. Although an approximate dynamic programming (ADP) policy could be
+learned from simulated or observed operational trajectories, a reliable
+value-function approximation generally requires sufficiently representative
+training data and careful validation. Such data may be limited during the
+initial deployment of the robot service. We therefore use a profit-oriented
+rolling-horizon insertion heuristic as a cold-start policy. It can be
+implemented directly, preserves schedule feasibility by construction, and
+requires calibration of only a small number of parameters. As operational
+data accumulate, the resulting state--action trajectories can support the
+subsequent development and comparison of ADP-based or hybrid policies \citep{bertsekas1997rollout,auad2026data}.
+
+\subsection{Profit-Oriented Rolling-Horizon Insertion Heuristic}\label{subsec:heuristic}
+
+We approximate the Bellman action by the deterministic rolling-horizon policy
 \[
-V_{T+1}(S_{T+1})=\widetilde U_{T+1},
+\nu_t=\mu_\theta(S_t)=(x_t,\boldsymbol{\pi}'_t).
 \]
-where the terminal cost accounts for tasks that remain unserved at the
-end of the day. A policy \(\mu\) maps each observed state to a feasible action,
+The policy uses only the observed state \(S_t\), maintains the feasible
+schedule sets \(\Pi_k(S_t)\), and represents the unknown continuation value
+by a forecast-based opportunity term. At each decision time, it repeatedly
+performs two distinct steps. First, it identifies the best robot and insertion
+position separately for every task under the current fleet schedules. Second,
+it selects one task whose best insertion is committed. The affected schedule
+and all remaining task candidates are then updated before the next insertion.
+During this construction, \(\boldsymbol{\pi}'_t\) denotes the provisional
+fleet schedule, initialized as \(\boldsymbol{\pi}'_t=\boldsymbol{\pi}_t\).
+
+\subsubsection{Rolling horizon}
+
+At \(t=0\), station-operation tasks are known and enter \(I_0\), but they need
+not be assigned immediately. An unassigned task is carried forward together
+with newly communicated tasks at subsequent decision times. At decision time
+\(t\), the heuristic considers
 \[
-\nu_t=\mu(S_t),
-\]
-and the optimal policy is the policy induced by the Bellman equation. Because
-the action depends only on information contained in \(S_t\), decisions cannot
-use passenger requests or RPP matching outcomes that have not yet been
-observed.
-
-The compact assignment expression introduced above,
-\[
-\min_{x,\pi}
-\sum_{i\in I_t}\sum_{k\in K}
-x_{ik}G_i(k,\pi_k)
-+\Phi(S_{t+1}),
-\]
-is a one-step representation of this Bellman equation. The assignment term
-approximates the immediate cost, while
-\[
-\Phi(S_{t+1})
-\approx
-\mathbb E\!\left[V_{t+1}(S_{t+1})\mid S_t,\nu_t\right]
-\]
-approximates the continuation value of the resulting robot locations,
-schedules, pending parcels, and remaining station commitments.
-
-\section{Solution Approach}
-
-\subsection{Commitment-Aware Rolling-Horizon Insertion Heuristic}
-
-Solving the Bellman equation exactly would require a state space containing
-all robot schedules and a scenario tree for future passenger requests, RPP
-matching outcomes, and vehicle arrival times. We therefore approximate its
-one-step decision using a commitment-aware rolling-horizon insertion policy,
-denoted by
-\[
-\nu_t=\mu_\theta(S_t,I_t).
-\]
-The method retains the exact feasibility set \(\Pi_k(S_t)\), but replaces the
-unknown continuation value with a simple forecast-based opportunity term.
-
-\subsubsection{Beginning-of-Day Initialization}
-
-At \(t=0\), each robot starts from its given storage node. The station
-tasks in \(B\) are processed by increasing start time and decreasing
-insertion regret, inserted using the feasible-insertion rule below, and then
-locked because their task intervals are contract commitments. The pending
-parcel set \(P_0\) is not assigned to robots before RPP matching. Instead, it
-is combined with historical passenger-assistance demand to construct
-\(p_{nt}^{H}\), the normalized expected share of robot-task demand at
-node \(n\) over the next \(H\) units of time.
-
-\subsubsection{Feasible Insertions}
-
-At a decision time point \(t\), the heuristic considers released tasks
-whose due times lie within the rolling horizon. For every task \(i\),
-robot \(k\), and insertion position \(p\), define a candidate
-\[
-c=(i,k,p),
-\qquad
-\pi_{kt}^{c}=\pi_{kt}\oplus_p i.
-\]
-Its feasibility set is
-\[
-\mathcal C_i(S_t)
+I_t^H
 =
-\left\{
-(i,k,p):
-\pi_{kt}\oplus_p i\in\Pi_k(S_t)
-\right\}.
+\{i\in I_t:t_i^*\leq t+H\}.
 \]
-Candidate evaluation propagates timing through the remainder of the affected
-schedule. Consequently, the movement from the preceding task to
-\(n_i\) and the movement from \(n_i\) to the succeeding task are included. A
-candidate is removed
-if it would violate vehicle synchronization, an already dispatched task,
-or a locked station-operation interval.
+Tasks therefore enter the active rolling horizon as their desired meeting
+times approach. A task may be deferred only while doing so remains consistent
+with \(\mathcal U(S_t)\). In particular, station-operation tasks are not
+forced into robot schedules at the beginning of the day, but at least one
+feasible future insertion must be preserved for each unassigned station
+commitment.
 
-\subsubsection{Insertion Cost and Approximate Continuation Value}
+The unmatched parcel set \(P_t\) is not assigned because its handover times
+are not yet known. Instead, \(P_t\) and historical task arrivals are used to
+estimate \(p_{nt}^H\), the expected share of new robot tasks at node \(n\)
+during the next \(H\) units of time.
 
-For a feasible candidate \(c=(i,k,p)\), let
-\(\Delta\widetilde T_c\) denote incremental robot travel,
-\(\Delta\widetilde W_c^r\) and
-\(\Delta\widetilde W_c^v(\delta)\) the incremental robot and vehicle waiting,
-\(\Delta\widetilde L_c\) the incremental lateness propagated through the
-schedule, and \(\widetilde R_i\) the normalized task revenue. The
-parameter \(\delta\geq0\) is a synchronization safety buffer: for a linked
-vehicle arrival estimate \(e_i\), the heuristic evaluates the risk of vehicle
-waiting relative to the earlier robot-ready target \(e_i-\delta\). In
-particular, if \(u_c\) is the robot-ready time under candidate \(c\), the
-risk-adjusted vehicle-waiting term is based on
-\[
-\widehat W_c^v(\delta)
-=
-\left[u_c-(e_i-\delta)\right]^+.
-\]
-When \(\delta=0\), this reduces to the usual predicted vehicle waiting;
-\(\delta>0\) encourages the robot to be ready before the vehicle's expected
-arrival.
+\subsubsection{Best insertion for each task}
 
-Let \(\ell_c^+\) be the projected node at which robot \(k\) next becomes
-uncommitted after candidate \(c\). The forecast-based opportunity cost is
-\[
-\widetilde O_c
-=
-\sum_{n\in N}
-p_{nt}^{H}\,
-\widetilde\tau_{\ell_c^+n}.
-\]
-It approximates the continuation value by penalizing schedules that leave a
-robot far from likely near-future passenger-assistance and parcel-task demand.
-The normalized insertion score is
-\[
+For task \(i\in I_t^H\), robot \(k\), and schedule position \(p\), let
+\(c=(i,k,p)\) denote a candidate insertion. The heuristic ranks each feasible
+candidate minimizing the score
+\begin{equation}\label{eq:insert_score}
 g_c
 =
-\Delta\widetilde T_c
-+\Delta\widetilde W_c^r
-+\Delta\widetilde W_c^v(\delta)
-+\Delta\widetilde L_c
--\widetilde R_i
-+\lambda\widetilde O_c,
-\]
-where \(\lambda\geq0\) controls the strength of the approximate continuation
-value. All locked station commitments remain hard constraints and therefore
-do not require a penalty parameter.
+\Delta D_c-R_i+\lambda\Delta O_c.
+\end{equation}
+The score consists of the incremental lateness payment \(\Delta D_c\), task
+revenue \(R_i\), and future opportunity loss \(\Delta O_c\). Parameter
+\(\lambda\geq0\) controls the importance of preserving future robot
+availability.
 
-\subsubsection{Regret--Urgency Selection}
-
-For each task with at least one feasible insertion, let
+Candidate \(c\) produces the provisional schedule
 \[
-g_i^{(1)}
+\left(\pi'_{kt}\right)^{c}=\pi'_{kt}\oplus_p i.
+\]
+Position \(p\) may lie between any two not-yet-executed tasks or at the end of
+the schedule. The relative order of previously accepted tasks is preserved.
+Only candidates whose resulting schedules satisfy \(\mathcal U(S_t)\) are
+retained in \(\mathcal C_i(S_t)\).
+
+The first term in \eqref{eq:insert_score}, \(\Delta D_c\), measures the change in lateness payments
+caused by the insertion. Let \(a_i^c\) denote the start time of the inserted
+task, and let \(a_j\) and
+\(a_j^c\) denote the start time of an existing task \(j\) before and after
+insertion \(c\), respectively. Let \(D_c\) contain the downstream tasks whose
+timing changes. Because travel and service times are fixed and known, these
+times are obtained by propagating the schedule from position \(p\). The
+incremental lateness payment is
+\[
+\Delta D_c
 =
-\min_{c\in\mathcal C_i(S_t)}g_c,
+\gamma_i\left[a_i^c-t_i^*\right]^+
++
+\sum_{j\in D_c}
+\gamma_j
+\left(
+\left[a_j^c-t_j^*\right]^+
+-
+\left[a_j-t_j^*\right]^+
+\right),
+\]
+where \([z]^+=\max\{0,z\}\).
+
+The second term in \eqref{eq:insert_score}, \(R_i\), is the revenue earned by accepting task \(i\). Because
+revenue does not depend on the selected robot or insertion position, it enters
+the minimization score directly as \(-R_i\).
+
+The final term, \(\Delta O_c\), approximates the effect of the insertion on
+future service opportunities. Let
+\((b_k^+,\ell_k^+)\) and \((b_c^+,\ell_c^+)\) denote the projected time and
+node at which robot \(k\) next becomes uncommitted before and after insertion
+\(c\), respectively. Define its forecast accessibility by
+\[
+\Psi_t(b,\ell)
+=
+\sum_{n\in N}p_{nt}^H
+\left[
+\frac{t+H-b-\tau_{\ell n}}{H}
+\right]^+.
+\]
+The corresponding opportunity loss is
+\[
+\Delta O_c
+=
+\Psi_t(b_k^+,\ell_k^+)-\Psi_t(b_c^+,\ell_c^+).
+\]
+It increases when an insertion leaves the robot available later or farther
+from likely future tasks. This is a continuation-value proxy, not a robot
+travel charge.
+
+For every task with \(\mathcal C_i(S_t)\neq\varnothing\), its best provisional
+insertion is
+\[
+c_i^{(1)}
+=
+\left(i,k_i^{(1)},p_i^{(1)}\right)
+\in
+\arg\min_{c\in\mathcal C_i(S_t)}g_c,
 \qquad
+g_i^{(1)}=g_{c_i^{(1)}}.
+\]
+This calculation identifies the current best robot \(k_i^{(1)}\) and
+insertion position \(p_i^{(1)}\) for task \(i\), but does not yet assign it.
+
+\subsubsection{Task selection and schedule update}
+
+After the best robot--position combination has been calculated separately for
+each task, the heuristic decides which task is committed first. This
+across-task comparison uses two measures: insertion regret and task urgency.
+Regret measures how much is lost if the task cannot use its current best
+insertion, whereas urgency measures how close the task is to its desired
+meeting time.
+
+To calculate regret, first define the score of deferring task \(i\):
+\[
+g_i^0
+=
+\begin{cases}
+0, & \text{if task \(i\) may remain unassigned},\\
++\infty, & \text{if \(i\) is a critical station task}.
+\end{cases}
+\]
+A station task is critical when postponing its assignment beyond the current
+decision time would eliminate all feasible future insertions under the
+currently known schedules. The second-best alternative is
+\[
 g_i^{(2)}
 =
-\operatorname{secondmin}_{c\in\mathcal C_i(S_t)}g_c.
+\min\!\left(
+\{g_c:c\in\mathcal C_i(S_t)\setminus\{c_i^{(1)}\}\}
+\cup\{g_i^0\}
+\right).
 \]
 The insertion regret is
 \[
 \rho_i=g_i^{(2)}-g_i^{(1)}.
 \]
-If only one feasible insertion exists, \(g_i^{(2)}\) is replaced by the
-normalized cost of failing to perform task \(i\). A large \(\rho_i\)
-therefore identifies a task whose best robot should be reserved before
-that option is lost.
+A large regret indicates that losing the best insertion would substantially
+reduce expected profit or schedule flexibility.
 
-The urgency of task \(i\) is
+Task urgency is
 \[
 \eta_i
 =
 \left[
-1-\frac{d_i-t}{H}
+1-\frac{t_i^*-t}{H}
 \right]_0^1,
 \qquad
 [z]_0^1=\min\{1,\max\{0,z\}\}.
 \]
-After normalizing regret to \(\widetilde\rho_i\in[0,1]\), the task
-selection score is
+If only one task has an acceptable insertion, it is inserted directly. If
+several tasks have acceptable insertions, critical station tasks are
+considered first. If several station tasks are critical, the task with the
+fewest feasible candidates is selected, with \(t_i^*\) used as a tie-breaker.
+Otherwise, the heuristic considers the currently profitable tasks satisfying
+\(g_i^{(1)}<0\) and selects
 \[
-h_i
+i^*
 =
-\alpha\widetilde\rho_i
-+(1-\alpha)\eta_i,
-\qquad 0\leq\alpha\leq1.
-\]
-The heuristic selects the task with the largest \(h_i\), inserts it using
-the candidate attaining \(g_i^{(1)}\), updates the affected robot schedule,
-and recomputes the remaining candidates. An insertion is accepted only when
-it is preferable to the contract-specific deferral or non-performance
-alternative; otherwise, the task remains pending until the next decision
-time point or until it expires. This procedure repeats until no acceptable
-insertion remains.
-
-After each insertion round, one relocate pass is performed over tasks
-that have not been dispatched: each such task is temporarily removed and
-reinserted into its best feasible position, and the move is retained only if
-it reduces the total insertion score. This fixed repair rule introduces no
-additional tunable parameter. If a robot remains idle, it may be repositioned
-to
-\[
-n_k^\ast
-=
-\arg\min_{n\in N}
+\arg\max_i
 \left\{
-\widetilde\tau_{\ell_{kt}n}
-+\lambda\sum_{m\in N}p_{mt}^{H}\widetilde\tau_{nm}
+\alpha\widetilde\rho_i+(1-\alpha)\eta_i
 \right\},
 \]
-provided that the repositioning does not threaten its next locked station
-commitment.
+where \(\widetilde\rho_i\in[0,1]\) is normalized across the current candidate
+tasks. Parameter \(\alpha\) balances the loss of a scarce insertion
+opportunity against proximity to the desired meeting time.
 
-\subsubsection{Tunable Parameters}
-
-The heuristic uses only four tunable parameters:
+Only after \(i^*\) has been selected is its provisional best insertion
+committed:
 \[
-\theta=(H,\lambda,\alpha,\delta),
-\qquad |\theta|=4,
+x_{i^*k_{i^*}^{(1)}}^t=1,
+\qquad
+\pi'_{k_{i^*}^{(1)}t}
+\leftarrow
+\pi'_{k_{i^*}^{(1)}t}\oplus_{p_{i^*}^{(1)}}i^*.
 \]
-where \(H\) is the rolling-horizon length, \(\lambda\) is the opportunity-cost
-coefficient, \(\alpha\) balances insertion regret and urgency, and \(\delta\)
-is the synchronization safety buffer. Travel-time matrices, task
-durations, normalization constants, revenues, vehicle arrival estimates,
-demand forecasts, and station-contract intervals are input data and are not
-included in \(\theta\).
+This insertion changes the selected robot's availability and may change the
+best robot, insertion position, and score of every remaining task. All
+affected candidates are consequently recomputed before another task is
+selected. This sequential update allows one robot to receive multiple tasks
+at the same decision time whenever the final schedule remains feasible.
+
+The procedure stops when no critical station task and no profitable feasible
+insertion remain. Unselected tasks remain in \(I_t\) for reconsideration at
+the next decision time. Optional tasks may eventually expire, whereas station
+commitments cannot be rejected. The assignments and updated schedules
+produced by the repeated insertions constitute
+\((x_t,\boldsymbol{\pi}'_t)\).
+
+The policy has three tunable parameters:
+\[
+\theta=(H,\lambda,\alpha),
+\qquad
+H>0,\ \lambda\geq0,\ 0\leq\alpha\leq1.
+\]
+Here, \(H\) is the rolling-horizon length, \(\lambda\) weights the approximate
+continuation value, and \(\alpha\) balances regret and urgency.
+
+Algorithm~\ref{alg:profit_insertion} summarizes the complete procedure. The
+per-task minimization in Lines~\ref{alg:best_candidate_start}--%
+\ref{alg:best_candidate_end} produces provisional best candidates only. A
+task is assigned only in Line~\ref{alg:commit_candidate}; the subsequent loop
+then recalculates the candidates of all remaining tasks.
+
+\begin{algorithm}[H]
+\caption{Profit-oriented rolling-horizon insertion at decision time \(t\)}
+\label{alg:profit_insertion}
+\begin{algorithmic}[1]
+\Require Observed state \(S_t\) and parameters \(\theta=(H,\lambda,\alpha)\)
+\Ensure Assignment \(x_t\) and updated schedules \(\boldsymbol{\pi}'_t\)
+\State Set \(x_t\gets 0\), \(\boldsymbol{\pi}'_t\gets\boldsymbol{\pi}_t\),
+and construct \(I_t^H=\{i\in I_t:t_i^*\leq t+H\}\)
+\While{\(\mathrm{true}\)}
+    \ForAll{\(i\in I_t^H\)}
+        \State Generate \(\mathcal C_i(S_t)\) from all robots and all
+        feasible positions in the current schedules
+        \label{alg:best_candidate_start}
+        \If{\(\mathcal C_i(S_t)\neq\varnothing\)}
+            \State Compute \(g_c\) for every \(c\in\mathcal C_i(S_t)\)
+            \State Determine \(c_i^{(1)}\), \(g_i^{(1)}\),
+            \(g_i^{(2)}\), \(\rho_i\), and \(\eta_i\)
+        \EndIf
+        \label{alg:best_candidate_end}
+    \EndFor
+    \If{no task has a feasible candidate}
+        \State \textbf{break}
+    \ElsIf{one or more critical station tasks exist}
+        \State Select \(i^*\) by the fewest feasible candidates and then
+        by the earliest \(t_i^*\)
+    \ElsIf{no task satisfies \(g_i^{(1)}<0\)}
+        \State \textbf{break}
+    \Else
+        \State Select
+        \(i^*\gets\arg\max_i
+        \{\alpha\widetilde\rho_i+(1-\alpha)\eta_i\}\)
+        over tasks satisfying \(g_i^{(1)}<0\)
+    \EndIf
+    \State Commit \(c_{i^*}^{(1)}
+    =(i^*,k_{i^*}^{(1)},p_{i^*}^{(1)})\), set
+    \(x_{i^*k_{i^*}^{(1)}}^t\gets1\), and update its robot schedule
+    \label{alg:commit_candidate}
+    \State Remove \(i^*\) from \(I_t^H\); recompute candidates in the next
+    iteration
+\EndWhile
+\State \Return \(x_t,\boldsymbol{\pi}'_t\)
+\end{algorithmic}
+\end{algorithm}
+
+\section{Solution Approach}
+
 
 \subsection{Bayesian Simulation-Based Calibration}
 
 The overall methodological framework is summarized in
-Fig.~\ref{fig:method_framework}. The four-dimensional parameter vector
+Fig.~\ref{fig:method_framework}. The three-dimensional parameter vector
 \(\theta\) is calibrated offline using Bayesian simulation-based
 optimization. For a given \(\theta\), stochastic simulation is used to
 estimate the expected daily system performance:
@@ -689,8 +882,8 @@ J(\theta)
 \mathbb E
 \left[
 \sum_{t\in\mathcal T}
-C\!\left(
-S_t,\mu_\theta(S_t,I_t),\zeta_{t+1}
+G\!\left(
+S_t,\mu_\theta(S_t),\zeta_{t+1}
 \right)
 \right].
 \]
@@ -769,12 +962,12 @@ optimization is not executed when an individual task arrives.
 
 % Problem representation
 \node[module=inputblue] (network) at (-2.75,0) {
-Network and time data\\
-\(\{N,\tau_{mn},\xi\}\)
+Network and fixed travel-time data\\
+\(\{N,\tau_{mn}\}\)
 };
 \node[module=inputblue] (task) at (2.75,0) {
-Common task attributes\\
-\((q_i,n_i,r_i,d_i,s_i,R_i)\)
+Unified task representation\\
+\((q_i,n_i,t_i^*,s_i,\gamma_i,R_i)\)
 };
 \node[core=inputblue] (state) at (0,-2.05) {
 Static modelling inputs for simulation and operation
@@ -791,38 +984,38 @@ choose next \(\theta\)
 };
 \node[core=calorange] (simulation) at (0,-7.85) {
 Stochastic simulation under \(\theta\)\\
-generates dynamic \((S_t,I_t)\) and random \(\zeta_t\)
+generates dynamic \(S_t\) and random \(\zeta_t\)
 };
 
 % Online heuristic called repeatedly inside each simulation
 \node[step=methodgreen] (observe) at (-2.55,-10.15) {
-Observe online inputs\\
-\((S_t,I_t)\)
+Observe information state\\
+\(S_t\)
 };
 \node[step=methodgreen] (evaluate) at (2.55,-10.15) {
-Evaluate candidate assignments\\
-using \(G_i(k,\pi_k)\)
+Evaluate feasible\\
+task--robot insertions
 };
 \node[step=methodgreen] (assign) at (2.55,-11.55) {
-Select assignment\\
-update \((x_t,\pi_t)\)
+Select and assign tasks\\
+update \((x_t,\boldsymbol{\pi}'_t)\)
 };
 \node[step=methodgreen] (transition) at (-2.55,-11.55) {
 Simulate state transition\\
-obtain \(S_{t+1}\) and \(C_t\)
+obtain \(S_{t+1}\) and \(G_t\)
 };
 \node[module=calorange] (performance) at (0,-13.75) {
 Estimate long-run performance\\
 \(\displaystyle J(\theta)=
-\mathbb E\!\left[\sum_t C_t(\theta)\right]\)\\
-\(\scriptstyle C_t(\theta)=C(S_t,\mu_\theta(S_t,I_t),\zeta_{t+1})\)
+\mathbb E\!\left[\sum_t G_t(\theta)\right]\)\\
+\(\scriptstyle G_t(\theta)=G(S_t,\mu_\theta(S_t),\zeta_{t+1})\)
 };
 
 % Final deployment after calibration
 \node[core=statepurple] (deployment) at (0,-16.40) {
 Real-time deployment after calibration\\
-observe \((S_t,I_t)\), use \(\theta^\ast\):
-\(\nu_t=\mu_{\theta^\ast}(S_t,I_t)\)
+observe \(S_t\), use \(\theta^\ast\):
+\(\nu_t=\mu_{\theta^\ast}(S_t)\)
 };
 
 % Group backgrounds
@@ -868,267 +1061,9 @@ node[pos=0.30, right, font=\tiny, align=center] {simulation\\response}
 \section*{Acknowledgement}
 
 %\bibliographystyle{elsart-harv}
-%\bibliography{C:/reference/MyCollection}
+
 \appendix
 
-\bibliographystyle{elsart-harv} %plainnat, or agsm
-%\bibliography{C:/Users/meedyliu/Documents/Northwestern/reference/SemiAnalytical}
-
-%\bibliography{refs}
-%\bibliography{../../../../../../research/latex/reference/OD_Yu_Nie}
-% \begin{thebibliography}{40}
-% \expandafter\ifx\csname natexlab\endcsname\relax\def\natexlab#1{#1}\fi
-% \expandafter\ifx\csname url\endcsname\relax
-%   \def\url#1{\texttt{#1}}\fi
-% \expandafter\ifx\csname urlprefix\endcsname\relax\def\urlprefix{URL }\fi
-
-% \bibitem[{Arnott et~al.(1988)Arnott, de~Palma, and Lindsey}]{ALD_88}
-% Arnott, R., de~Palma, A., Lindsey, R., 1988. {Schedule delay and departure time
-%   decisions with heterogeneous commuters}. Transportation Research Record 1197,
-%   56--57.
-
-% \bibitem[{Arnott et~al.(1990)Arnott, de~Palma, and Lindsey}]{ALD_90b}
-% Arnott, R., de~Palma, A., Lindsey, R., 1990. {Departure time and route choice
-%   for the morning commute}. Transportation Research Part B 24~(3), 209--228.
-
-% \bibitem[{Arnott et~al.(1992)Arnott, de~Palma, and Lindsey}]{ALD_92}
-% Arnott, R., de~Palma, A., Lindsey, R., 1992. {Route choice with heterogeneous
-%   drivers and group-specific congestion costs}. Regional Science and Urban
-%   Economics 22~(1), 71--102.
-
-% \bibitem[{Arnott et~al.(1994)Arnott, de~Palma, and Lindsey}]{ALD_94}
-% Arnott, R., de~Palma, A., Lindsey, R., 1994. {The welfare effects of congestion
-%   tolls with heterogeneous commuters}. Journal of Transport Economics and
-%   Policy 28~(2), 139--161.
-
-% \bibitem[{Beckmann et~al.(1956)Beckmann, McGuire, and Winsten}]{Beckmann_56}
-% Beckmann, M., McGuire, C.~B., Winsten, C.~B., 1956. {Studies in the Economics
-%   of Transportation}. Yale University Press, New Haven, Connecticut.
-
-% \bibitem[{Byrd et~al.(2006)Byrd, Nocedal, and Waltz}]{Byrd_06}
-% Byrd, R., Nocedal, J., Waltz, R., 2006. {KNITRO: An integrated package for
-%   nonlinear optimization}. In: Large-scale nonlinear optimization. Springer,
-%   pp. 35--59.
-
-% \bibitem[{{California Department of
-%   Transportation}(1999)}]{california_department_of_transportation_performance_1999}
-% {California Department of Transportation}, 1999. Performance measurement
-%   system. Tech. rep., Sacramento, California.
-
-% \bibitem[{Cohen(1987)}]{Cohen_87}
-% Cohen, Y., 1987. {Commuter welfare under peak-period congestion tolls: who
-%   gains and who loses?} International Journal of Transport Economics 14~(3),
-%   238--266.
-
-% \bibitem[{Dafermos(1980)}]{Dafermos_80}
-% Dafermos, S., 1980. {Traffic equilibrium and variational inequalities}.
-%   Transportation Science 14~(1), 42--54.
-
-% \bibitem[{Dafermos(1971)}]{Dafermos_71}
-% Dafermos, S.~C., 1971. {An extended traffic assignment model with applications
-%   to two-way traffic}. Transportation Science 5~(4), 366--389.
-
-% \bibitem[{Daganzo(1985)}]{Daganzo_85}
-% Daganzo, C.~F., 1985. {The uniqueness of a time-dependent equilibrium
-%   distribution of arrivals at a single bottleneck}. Transportation science
-%   19~(1), 29--37.
-
-% \bibitem[{De~Palma and Lindsey(2002{\natexlab{a}})}]{de2002congestion}
-% De~Palma, A., Lindsey, R., 2002{\natexlab{a}}. Congestion pricing in the morning and evening
-%   peaks: A comparison using the bottleneck model. In: Transportation
-%   Visioning-2002 and Beyond (Vision d'avenir des transports-2002 et au-dela),
-%   Canadian Transportation Research Forum, Proceedings of the 37th Annual
-%   Conference.
-
-
-% \bibitem[{de~Palma and Lindsey(2002{\natexlab{b}})}]{dePalma_02}
-% de~Palma, A., Lindsey, R., 2002{\natexlab{b}}. {Comparison of morning and evening commutes in
-%   the Vickrey bottleneck model}. Transportation Research Record 1807~(1),
-%   26--33.
-% %\bibitem[{Eaves(1971)}]{Eaves_71}
-% %Eaves, B.~C., 1971. {On the basic theorem of complementarity}. Mathematical
-% %  Programming 1, 68--75.
-
-% \bibitem[{Fiedler(1962)}]{Fiedler1962}
-% Fiedler, Miroslav, P.~V., 1962. On matrices with non-positive off-diagonal
-%   elements and positive principal minors. Czechoslovak Mathematical Journal
-%   12~(3), 382--400.
-
-% \bibitem[{Friesz et~al.(1993)Friesz, Bernstein, Smith, Tobin, and
-%   Wie}]{Friesz_93}
-% Friesz, T.~L., Bernstein, D., Smith, T.~E., Tobin, R.~L., Wie, B.~W., 1993. {A
-%   variational inequality formulation of the dynamic network user equilibrium
-%   problem}. Operations Research 41~(1), 179--191.
-
-% \bibitem[{Hall(2013)}]{Hall_13}
-% Hall, J., 2013. Pareto improvements from lexus lanes: The effects of pricing a
-%   portion of the lanes of congested highways. working paper.
-
-% \bibitem[{Hansen(1982)}]{hansen_large_1982}
-% Hansen, L.~P., 1982. Large sample properties of generalized method of moments
-%   estimators. Econometrica 50~(4), 1029--1054.
-
-% \bibitem[{Harker and Pang(1990)}]{Harker_90}
-% Harker, P.~T., Pang, J.-S., 1990. {Finite-dimensional variational inequality
-%   and nonlinear complementarity problems:A survey of theory,algorithms and
-%   applications}. Mathematical Programming 48~ (1--3), 161--220.
-
-% \bibitem[{Hendrickson and Kocur(1981)}]{Hendrickson:81}
-% Hendrickson, C., Kocur, G., 1981. {Schedule delay and departure time decisions
-%   in a deterministic model}. Transportation Science 15~(1), 62--77.
-
-% %\bibitem[{Huang(2000)}]{Huang_2000}
-% %Huang, H., 2000. {Fares and tolls in a competitive system with transit and
-% %  highway: the case with two groups of commuters}. Transportation Research Part
-% %  E 36~(4), 267--284.
-
-% \bibitem[{Lam and Small(2001)}]{LamSmall_01}
-% Lam, T.~C., Small, K.~A., 2001. {The value of time and reliability: measurement
-%   from a value pricing experiment}. Transportation Research Part E 37~(2-3),
-%   231--251.
-
-% \bibitem[{Lindsey(2004)}]{Lindsey_04}
-% Lindsey, R., 2004. {Existence, uniqueness, and trip cost function properties of
-%   user equilibrium in the bottleneck model with multiple user classes}.
-%   Transportation science 38~(3), 293--314.
-
-% \bibitem[{Liu and Nie(2011)}]{LiuNie_11}
-% Liu, Y., Nie, Y., 2011. {Morning commute problem considering route choice, user
-%   heterogeneity and multi-criteria system optimum}. Transportation Research
-%   Part B 45~(4), 619--642.
-
-% \bibitem[{Liu and Nie(2012)}]{LiuNie_TRB2011}
-% Liu, Y., Nie, Y., 2012. {Welfare effects of congestion pricing and transit
-%   services in multi-class multi-modal networks}. Transportation Research Board
-%   2283~ (1), 34--43.
-
-% \bibitem[{Lu et~al.(2006)Lu, Zhou, and Mahmassani}]{Lu_06}
-% Lu, C., Zhou, X., Mahmassani, H., 2006. {Variable toll pricing and
-%   heterogeneous users: Model and solution algorithm for bicriterion dynamic
-%   traffic assignment problem}. Transportation Research Record: Journal of the
-%   Transportation Research Board 1964, 19--26.
-
-% \bibitem[{Merchant and Nemhauser(1978)}]{Merchant_78a}
-% Merchant, D.~K., Nemhauser, G.~L., 1978. {A model and an algorithm for the
-%   dynamic traffic assignment problem}. Transportation Science 12, 183--199.
-
-
-
-% \bibitem[{Mor\'{e} and Rheinboldt(1973)}]{more_73}
-% Mor\'{e}, J., Rheinboldt, W., 1973. On p- and s-functions and related classes
-%   of n-dimensional nonlinear mappings. Linear Algebra and its Applications 6,
-%   45--68.
-
-% \bibitem[{Mor\'{e}(1974)}]{more_74}
-% Mor\'{e}, J.~J., 1974. {Classes of functions and feasibility conditions in
-%   nonlinear complementarity problems}. Mathematical Programming 6~(1),
-%   327--338.
-
-% \bibitem[{Newell(1987)}]{Newell_87}
-% Newell, G., 1987. {The morning commute for nonidentical travelers}.
-%   Transportation Science 21~(2), 74--88.
-
-% \bibitem[{Nie and Zhang(2007)}]{Nie_07DTA}
-% Nie, Y., Zhang, H.~M., 2007. {Solving the dynamic user optimal assignment
-%   problem considering queue spillback}. Networks and Spatial Economics 10~(1),
-%   49--71.
-
-% \bibitem[{Pang(1985)}]{Pang_85}
-% Pang, J.-S., 1985. Asymmetric variational inequality problems over product
-%   sets: applications and iterative methods. Mathematical Programming 31~(2),
-%   206--219.
-
-% \bibitem[{Pang et~al.(2012)Pang, Han, Ramadurai, and Ukkusuri}]{Pang_12}
-% Pang, J.-S., Han, L., Ramadurai, G., Ukkusuri, S., 2012. {A continuous-time
-%   linear complementarity system for dynamic user equilibria in single
-%   bottleneck traffic flows}. Mathematical programming 133~(1-2), 437--460.
-
-% \bibitem[{Peeta and Ziliaskopoulos(2001)}]{Peeta_01}
-% Peeta, S., Ziliaskopoulos, A.~K., 2001. {Foundations of dynamic traffic
-%   assignment: The past, the present and the future}. Networks and Spatial
-%   Economics 1~(3-4), 233--265.
-
-% %\bibitem[{Pigou(1920)}]{Pigou_20}
-% %Pigou, A.~C., 1920. {The Economics of Welfare}, 1st Edition. Macmillan and
-% %  Company, London.
-% \bibitem[{Qian and Zhang(2013)}]{Qian_13}
-% Qian, Z., Zhang, H., Feb. 2013. {The morning commute problem with heterogeneous
-%   travellers: the case of continuously distributed parameters}.
-%   Transportmetrica A: Transport Science 9~(2), 178--203.
-
-% \bibitem[{Ramadurai et~al.(2010)Ramadurai, Ukkusuri, Zhao, and
-%   Pang}]{Ramadurai_10}
-% Ramadurai, G., Ukkusuri, S.~V., Zhao, J., Pang, J.-S., 2010. {Linear
-%   complementarity formulation for single bottleneck model with heterogeneous
-%   commuters}. Transportation Research Part B 44~(2), 193--214.
-
-
-% \bibitem[{Ran et~al.(1993)Ran, Boyce, and LeBlanc}]{Ran_93}
-% Ran, B., Boyce, D., LeBlanc, L.~J., 1993. {A new class of instantaneous dynamic
-%   user-optimal traffic assignment models}. Operation Research 41~ (1), 192--202.
-
-% \bibitem[{Roy(1950)}]{roy1950distribution}
-% Roy, A.~D., 1950. The distribution of earnings and of individual output. The
-%   Economic Journal 60~(239), 489--505.
-
-% \bibitem[{Sheffi(1985)}]{Sheffi_85}
-% Sheffi, Y., 1985. {Urban Transportation Networks: Equilibrium Analysis with
-%   Mathematical Programming Methods}. Prentice Hall, Englewood Cliffs, NJ.
-
-% \bibitem[{Small(1982)}]{Small:82}
-% Small, K.~A., 1982. {The scheduling of comsumer activities: work trips}. The
-%   American Economic Review 72~(3), 467--479.
-
-% \bibitem[{Small et~al.(2005)Small, Winston, and Yan}]{Small_05}
-% Small, K.~A., Winston, C., Yan, J., 2005. {Uncovering the distribution of
-%   motorists' preferences for travel time and reliability}. Econometrica 73~(4),
-%   1367--1382.
-
-% \bibitem[{Small and Verhoef(2007)}]{SmallVerhoef_07}
-% Small, K., Verhoef, E., 2007. {The Economics of Urban Transportation}.
-%   Routledge, UK.
-
-% %
-% %\bibitem[{Small(2013)}]{small_13}
-% %Small, K., 2013. Urban Transportation Economics. Vol.~4. Taylor \& Francis.
-
-% \bibitem[{Smith(1979)}]{Smith_79a}
-% Smith, M.~J., 1979. {Existence, uniqueness, and stability of traffic
-%   equilibria}. Transportation Research Part B 13~(4), 259--304.
-
-% \bibitem[{Smith(1984)}]{Smith_84_BottleneckExistence}
-% Smith, M.~J., 1984. {The Existence of a time-dependent equilibrium distribution
-%   of arrivals at a single bottleneck}. Transportation science 18~(4), 385--394.
-
-% \bibitem[{Sullivan(1999)}]{sullivan_state_1999}
-% Sullivan, E., 1999. State route 91 impact study datasets. Tech. rep.,
-%   California Polytechnic State University, San Luis Obispo, California.
-
-% \bibitem[{van~den Berg and Verhoef(2011{\natexlab{a}})}]{van2011congestion}
-% van~den Berg, V., Verhoef, E.~T., 2011{\natexlab{a}}. Congestion tolling in the
-%   bottleneck model with heterogeneous values of time. Transportation Research
-%   Part B 45~(1), 60--78.
-
-% \bibitem[{van~den Berg and Verhoef(2011{\natexlab{b}})}]{Vincent_11}
-% van~den Berg, V. A.~C., Verhoef, E.~T., 2011{\natexlab{b}}. {Winning or losing from dynamic
-%   bottleneck congestion pricing?: The distributional effects of road pricing
-%   with heterogeneity in values of time and schedule delay}. Journal of Public
-%   Economics 95~(7-8), 983--992.
-
-% \bibitem[{Vickrey(1969)}]{Vickrey_69}
-% Vickrey, W.~S., 1969. {Congestion theory and transport investment}. The American Economic Review 59~(2), 251--261.
-
-
-% \bibitem[{Vickrey(1973)}]{Vickrey_73}
-% Vickrey, W.~S., 1973. {Pricing, metering, and efficiently using urban
-%   transportation facilities}. Highway Research Record 476, 36--48.
-
-% \bibitem[{Yang and Huang(1997)}]{Yang_97a}
-% Yang, H., Huang, H.-J., 1997. {Analysis of the time-varying pricing of a
-%   bottleneck with elastic demand using optimal control theory}. Transportation
-%   Research Part B 31~(6), 425--440.
-
-% \end{thebibliography}
-
-%\bibliography{refs}
+\bibliographystyle{elsarticle-harv}
+\bibliography{robot}
 \end{document}
